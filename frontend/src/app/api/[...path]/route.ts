@@ -6,8 +6,9 @@ const BACKEND =
     ? "https://factorypulse-ai-production.up.railway.app"
     : "http://localhost:8000");
 
-async function proxy(req: NextRequest, method: string, path: string) {
-  const url = `${BACKEND}/${path}${req.nextUrl.search}`;
+async function proxy(req: NextRequest, method: string, _path: string) {
+  const rawPath = req.nextUrl.pathname.replace(/^\/api\//, "");
+  const url = `${BACKEND}/${rawPath}${req.nextUrl.search}`;
   const init: RequestInit = { method };
 
   if (method === "POST" || method === "PUT" || method === "PATCH") {
