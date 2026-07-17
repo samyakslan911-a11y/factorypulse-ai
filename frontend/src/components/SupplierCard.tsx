@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { Supplier } from "@/app/page";
+import { apiUrl } from "@/lib/api";
 
 function ScoreBadge({ score }: { score: number | null }) {
   if (score === null) return <span className="text-gray-500 text-sm">Sin análisis</span>;
@@ -44,10 +45,10 @@ export default function SupplierCard({
     setAnalyzing(true);
     setLogs(["Iniciando análisis..."]);
 
-    const res = await fetch(`/api/analyses/${supplier.id}/run`, { method: "POST" });
+    const res = await fetch(apiUrl(`/analyses/${supplier.id}/run`), { method: "POST" });
     const { analysis_id } = await res.json();
 
-    const es = new EventSource(`/api/stream/${analysis_id}`);
+    const es = new EventSource(apiUrl(`/stream/${analysis_id}`));
 
     es.addEventListener("progress", (e) => {
       const { message } = JSON.parse(e.data);
