@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Supplier } from "@/app/page";
-import { apiUrl } from "@/lib/api";
-
 type Finding = {
   type: string;
   severity: "low" | "medium" | "high";
@@ -95,8 +93,8 @@ export default function SupplierDetail() {
 
   useEffect(() => {
     Promise.all([
-      fetch(apiUrl(`/suppliers/${id}`)).then(r => r.json()),
-      fetch(apiUrl(`/suppliers/${id}/history`)).then(r => r.json()),
+      fetch(`/api/suppliers/${id}`).then(r => r.json()),
+      fetch(`/api/suppliers/${id}/history`).then(r => r.json()),
     ]).then(([sup, hist]) => {
       setSupplier(sup);
       setHistory(hist);
@@ -107,7 +105,7 @@ export default function SupplierDetail() {
 
   async function selectAnalysis(a: Analysis) {
     setSelected(a);
-    const res = await fetch(apiUrl(`/suppliers/${id}/analyses/${a.id}/steps`));
+    const res = await fetch(`/api/suppliers/${id}/analyses/${a.id}/steps`);
     setSteps(await res.json());
   }
 
