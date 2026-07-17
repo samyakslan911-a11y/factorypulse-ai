@@ -20,7 +20,7 @@ export default function NewSupplierModal({
     if (!form.name.trim()) { setError("El nombre es obligatorio"); return; }
     setLoading(true);
     setError("");
-    const res = await fetch("/api/suppliers/", {
+    const res = await fetch("/api/suppliers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),

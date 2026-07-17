@@ -91,7 +91,7 @@ export default function Dashboard() {
 
   async function fetchSuppliers() {
     try {
-      const res = await fetch("/api/suppliers/");
+      const res = await fetch("/api/suppliers");
       if (!res.ok) throw new Error();
       const data = await res.json();
       setSuppliers(data);
