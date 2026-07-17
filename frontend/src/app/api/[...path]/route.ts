@@ -17,7 +17,7 @@ async function proxy(req: NextRequest, method: string, _path: string) {
     init.headers = { "Content-Type": "application/json" };
   }
 
-  const res = await fetch(url, init);
+  const res = await fetch(url, { ...init, cache: "no-store" });
 
   if (res.headers.get("content-type")?.includes("text/event-stream")) {
     return new NextResponse(res.body, {
