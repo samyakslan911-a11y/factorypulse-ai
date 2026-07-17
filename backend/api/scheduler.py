@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks
 from backend.scheduler.scheduler import get_status
 
-router = APIRouter(prefix="/api/scheduler", tags=["scheduler"])
+router = APIRouter(prefix="/scheduler", tags=["scheduler"])
 
 DEMO_USER_ID = "00000000-0000-0000-0000-000000000001"
 
