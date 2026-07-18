@@ -186,6 +186,29 @@ def _persist(analysis_id: str, final_args: dict, model: str, emit_fn):
     emit_fn("done", f"Análisis completado — score {final_args.get('score_total')}/100")
 
 
+def _maybe_alert(user_id: str, supplier: dict, old_score: int | None, final_args: dict):
+    new_score = final_args.get("score_total")
+    if new_score is None or old_score is None:
+        return
+    def _level(s): return 0 if s < 30 else 1 if s < 60 else 2
+    if _level(old_score) == _level(new_score):
+        return
+    try:
+        from supabase import create_client
+        from backend.services.email import send_risk_alert
+        client   = create_client(settings.supabase_url, settings.supabase_key)
+        response = client.auth.admin.get_user_by_id(user_id)
+        email    = response.user.email
+        findings = final_args.get("findings", [])
+        if isinstance(findings, str):
+            import json as _json
+            try: findings = _json.loads(findings)
+            except Exception: findings = []
+        send_risk_alert(email, supplier["name"], old_score, new_score, findings)
+    except Exception:
+        pass  # no bloquear el flujo si el email falla
+
+
 def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manual", _analysis: dict | None = None):
     analysis    = _analysis or create_analysis(supplier_id, user_id, triggered_by)
     analysis_id = analysis["id"]
@@ -279,9 +302,11 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
                 break
 
         # ── Persist ───────────────────────────────────────────────────
+        old_score = supplier.get("current_score")
         model_tag = "demo" if use_demo else MODEL
         if final_args:
             _persist(analysis_id, final_args, model_tag, _emit)
+            _maybe_alert(user_id, supplier, old_score, final_args)
         else:
             update_analysis(analysis_id, {
                 "status": "failed",
