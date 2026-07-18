@@ -12,7 +12,7 @@ from backend.config import settings
 from backend.db.analyses import create_analysis, update_analysis, save_step
 from backend.api.stream import emit, ensure_queue
 
-MODEL = "gemini-2.0-flash-lite"
+MODEL = "gemini-2.0-flash"
 
 SYSTEM_PROMPT = """You are a supplier risk analyst for a manufacturing company.
 Your job: analyze a supplier and produce a structured risk assessment.
