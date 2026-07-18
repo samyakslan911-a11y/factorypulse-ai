@@ -26,7 +26,9 @@ def create_supplier(data: SupplierCreate, background_tasks: BackgroundTasks, use
         return supplier
     except Exception as exc:
         import traceback
-        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}")
+        tb = traceback.format_exc()
+        print(f"[ERROR create_supplier] {type(exc).__name__}: {exc}\n{tb}", flush=True)
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}")
 
 @router.delete("/{supplier_id}", status_code=204)
 def delete_supplier(supplier_id: str, user_id: str = Depends(get_current_user)):

@@ -10,7 +10,8 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(_securi
         client = create_client(settings.supabase_url, settings.supabase_key)
         response = client.auth.get_user(credentials.credentials)
         return response.user.id
-    except Exception:
+    except Exception as e:
+        print(f"[ERROR get_current_user] {type(e).__name__}: {e}", flush=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token inválido o expirado",
