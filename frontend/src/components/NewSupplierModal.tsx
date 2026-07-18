@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { apiUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 export default function NewSupplierModal({
   onClose,
@@ -21,9 +21,8 @@ export default function NewSupplierModal({
     if (!form.name.trim()) { setError("El nombre es obligatorio"); return; }
     setLoading(true);
     setError("");
-    const res = await fetch(apiUrl("/suppliers/"), {
+    const res = await apiFetch("/suppliers/", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
     });
     if (res.ok) {

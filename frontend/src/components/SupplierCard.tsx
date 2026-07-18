@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { Supplier } from "@/app/page";
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
 
 function ScoreBadge({ score }: { score: number | null }) {
   if (score === null) return <span className="text-gray-500 text-sm">Sin análisis</span>;
@@ -45,7 +45,7 @@ export default function SupplierCard({
     setAnalyzing(true);
     setLogs(["Iniciando análisis..."]);
 
-    const res = await fetch(apiUrl(`/analyses/${supplier.id}/run`), { method: "POST" });
+    const res = await apiFetch(`/analyses/${supplier.id}/run`, { method: "POST" });
     const { analysis_id } = await res.json();
 
     const es = new EventSource(apiUrl(`/stream/${analysis_id}`));
@@ -75,7 +75,6 @@ export default function SupplierCard({
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex flex-col gap-4">
-      {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div>
           <h2 className="font-semibold text-white leading-tight">{supplier.name}</h2>
@@ -96,7 +95,6 @@ export default function SupplierCard({
         <ScoreBadge score={supplier.current_score} />
       </div>
 
-      {/* Score bars */}
       {hasScore && (
         <div className="flex flex-col gap-1.5">
           <ScoreBar label="Financiero"   value={supplier.score_financial} />
@@ -105,21 +103,18 @@ export default function SupplierCard({
         </div>
       )}
 
-      {/* Last analyzed */}
       {supplier.last_analyzed && (
         <p className="text-gray-600 text-xs">
           Último análisis: {new Date(supplier.last_analyzed).toLocaleDateString("es-CL")}
         </p>
       )}
 
-      {/* SSE log */}
       {logs.length > 0 && (
         <div className="bg-gray-950 rounded-lg p-3 text-xs font-mono text-gray-400 max-h-32 overflow-y-auto flex flex-col gap-0.5">
           {logs.map((l, i) => <span key={i}>{l}</span>)}
         </div>
       )}
 
-      {/* Actions */}
       <div className="flex gap-2">
         <button
           onClick={handleAnalyze}

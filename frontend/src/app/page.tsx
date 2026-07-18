@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import SupplierCard from "@/components/SupplierCard";
 import NewSupplierModal from "@/components/NewSupplierModal";
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
 
 export type Supplier = {
   id: string;
@@ -35,7 +35,7 @@ function SchedulerWidget() {
   const [running, setRunning] = useState(false);
 
   useEffect(() => {
-    fetch(apiUrl("/scheduler/status"))
+    apiFetch("/scheduler/status")
       .then((r) => r.json())
       .then(setStatus)
       .catch(() => null);
@@ -43,7 +43,7 @@ function SchedulerWidget() {
 
   async function handleRunNow() {
     setRunning(true);
-    await fetch(apiUrl("/scheduler/run-now"), { method: "POST" });
+    await apiFetch("/scheduler/run-now", { method: "POST" });
     setRunning(false);
   }
 
@@ -92,7 +92,7 @@ export default function Dashboard() {
 
   async function fetchSuppliers() {
     try {
-      const res = await fetch(apiUrl("/suppliers/"));
+      const res = await apiFetch("/suppliers/");
       if (!res.ok) throw new Error();
       const data = await res.json();
       setSuppliers(data);

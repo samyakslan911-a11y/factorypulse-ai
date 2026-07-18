@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Supplier } from "@/app/page";
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
 
 type Finding = {
   type: string;
@@ -95,8 +95,8 @@ export default function SupplierDetail() {
 
   useEffect(() => {
     Promise.all([
-      fetch(apiUrl(`/suppliers/${id}`)).then(r => r.json()),
-      fetch(apiUrl(`/suppliers/${id}/history`)).then(r => r.json()),
+      apiFetch(`/suppliers/${id}`).then(r => r.json()),
+      apiFetch(`/suppliers/${id}/history`).then(r => r.json()),
     ]).then(([sup, hist]) => {
       setSupplier(sup);
       setHistory(hist);
@@ -107,7 +107,7 @@ export default function SupplierDetail() {
 
   async function selectAnalysis(a: Analysis) {
     setSelected(a);
-    const res = await fetch(apiUrl(`/suppliers/${id}/analyses/${a.id}/steps`));
+    const res = await apiFetch(`/suppliers/${id}/analyses/${a.id}/steps`);
     setSteps(await res.json());
   }
 
@@ -118,13 +118,11 @@ export default function SupplierDetail() {
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Back */}
       <button onClick={() => router.push("/")}
         className="text-gray-500 hover:text-gray-300 text-sm flex items-center gap-1 w-fit">
         ← Volver al dashboard
       </button>
 
-      {/* Header */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 flex flex-col sm:flex-row gap-6">
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-white">{supplier.name}</h1>
@@ -153,7 +151,6 @@ export default function SupplierDetail() {
         </div>
       </div>
 
-      {/* Findings */}
       {latest?.findings?.length > 0 && (
         <section>
           <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">Hallazgos</h2>
@@ -171,10 +168,8 @@ export default function SupplierDetail() {
         </section>
       )}
 
-      {/* History + Steps */}
       {history.length > 0 && (
         <section className="grid sm:grid-cols-3 gap-4">
-          {/* History list */}
           <div className="flex flex-col gap-2">
             <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-1">Historial</h2>
             {history.map((a) => (
@@ -196,7 +191,6 @@ export default function SupplierDetail() {
             ))}
           </div>
 
-          {/* Steps */}
           <div className="sm:col-span-2 flex flex-col gap-2">
             <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-1">
               Pasos del agente
