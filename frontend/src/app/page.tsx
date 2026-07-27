@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import SupplierCard from "@/components/SupplierCard";
 import NewSupplierModal from "@/components/NewSupplierModal";
-import { apiFetch, apiUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 export type Supplier = {
   id: string;
@@ -129,8 +129,8 @@ export default function Dashboard() {
         <div className="text-center py-20 text-gray-500">Cargando...</div>
       ) : error ? (
         <div className="text-center py-20">
-          <p className="text-red-400 mb-2">No se pudo conectar al backend</p>
-          <p className="text-gray-600 text-sm">Asegúrate de que run.bat está corriendo en otra terminal</p>
+          <p className="text-red-400 mb-2">No se pudo conectar con el servidor</p>
+          <p className="text-gray-600 text-sm">Intenta recargar la página.</p>
         </div>
       ) : suppliers.length === 0 ? (
         <div className="text-center py-20">

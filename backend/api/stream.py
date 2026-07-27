@@ -30,6 +30,10 @@ def emit(analysis_id: str, event: str, data: str) -> None:
         )
 
 
+def cleanup_queue(analysis_id: str) -> None:
+    _queues.pop(analysis_id, None)
+
+
 @router.get("/{analysis_id}")
 async def stream_analysis(analysis_id: str):
     global _loop
@@ -37,14 +41,17 @@ async def stream_analysis(analysis_id: str):
     queue = ensure_queue(analysis_id)
 
     async def generator():
-        yield f"event: connected\ndata: {analysis_id}\n\n"
-        while True:
-            try:
-                msg = await asyncio.wait_for(queue.get(), timeout=30.0)
-                yield msg
-                if '"done"' in msg or '"failed"' in msg:
-                    break
-            except asyncio.TimeoutError:
-                yield "event: ping\ndata: keep-alive\n\n"
+        try:
+            yield f"event: connected\ndata: {analysis_id}\n\n"
+            while True:
+                try:
+                    msg = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    yield msg
+                    if '"done"' in msg or '"failed"' in msg:
+                        break
+                except asyncio.TimeoutError:
+                    yield "event: ping\ndata: keep-alive\n\n"
+        finally:
+            cleanup_queue(analysis_id)
 
     return StreamingResponse(generator(), media_type="text/event-stream")

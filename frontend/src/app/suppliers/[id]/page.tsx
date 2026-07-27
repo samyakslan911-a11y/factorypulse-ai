@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Supplier } from "@/app/page";
-import { apiFetch, apiUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 type Finding = {
   type: string;
@@ -92,6 +92,7 @@ export default function SupplierDetail() {
   const [selected, setSelected] = useState<Analysis | null>(null);
   const [steps, setSteps]       = useState<Step[]>([]);
   const [loading, setLoading]   = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -101,6 +102,10 @@ export default function SupplierDetail() {
       setSupplier(sup);
       setHistory(hist);
       if (hist.length > 0) selectAnalysis(hist[0]);
+      setLoading(false);
+    }).catch(err => {
+      console.error(err);
+      setLoadError(true);
       setLoading(false);
     });
   }, [id]);
@@ -112,6 +117,7 @@ export default function SupplierDetail() {
   }
 
   if (loading) return <div className="py-20 text-center text-gray-500">Cargando...</div>;
+  if (loadError) return <div className="py-20 text-center text-red-400">No se pudo conectar con el servidor. Intenta recargar la página.</div>;
   if (!supplier) return <div className="py-20 text-center text-red-400">Proveedor no encontrado</div>;
 
   const latest = history[0] ?? null;

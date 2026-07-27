@@ -28,8 +28,8 @@ def _run_due_analyses() -> None:
     logger.info(f"Scheduler: {len(due)} suppliers due for re-analysis")
     for supplier in due:
         try:
-            analysis = create_analysis(supplier["id"], supplier["user_id"], "scheduler")
-            run_supplier_agent(supplier["id"], supplier["user_id"], "scheduler", analysis)
+            analysis = create_analysis(supplier["id"], supplier["user_id"], "scheduled")
+            run_supplier_agent(supplier["id"], supplier["user_id"], "scheduled", analysis)
             logger.info(f"Scheduler: done — {supplier['name']}")
         except Exception as e:
             logger.error(f"Scheduler: error on {supplier['name']}: {e}")

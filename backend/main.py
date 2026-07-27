@@ -16,9 +16,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="FactoryPulse AI", version="0.1.0", lifespan=lifespan)
 
+_origins = (
+    [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    if settings.cors_origins
+    else ["*"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

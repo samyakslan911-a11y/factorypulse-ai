@@ -162,7 +162,7 @@ def _run_demo(supplier: dict, analysis_id: str, emit_fn) -> dict:
     }
 
 
-def _persist(analysis_id: str, final_args: dict, model: str, emit_fn):
+def _persist(analysis_id: str, final_args: dict, model: str, emit_fn, old_score: int | None = None):
     findings = final_args.get("findings", [])
     sources  = final_args.get("sources_used", [])
     if isinstance(findings, str):
@@ -172,21 +172,25 @@ def _persist(analysis_id: str, final_args: dict, model: str, emit_fn):
         try: sources = json.loads(sources)
         except Exception: sources = []
 
+    new_score = final_args.get("score_total")
+    score_delta = (new_score - old_score) if (new_score is not None and old_score is not None) else None
+
     update_analysis(analysis_id, {
         "status": "done",
         "model_used": model,
-        "score_total":         final_args.get("score_total"),
+        "score_total":         new_score,
         "score_financial":     final_args.get("score_financial"),
         "score_operational":   final_args.get("score_operational"),
         "score_reputational":  final_args.get("score_reputational"),
+        "score_delta":         score_delta,
         "summary":             final_args.get("summary"),
         "findings":            findings,
         "sources_used":        sources,
     })
-    emit_fn("done", f"Análisis completado — score {final_args.get('score_total')}/100")
+    emit_fn("done", f"Análisis completado — score {new_score}/100")
 
 
-def _maybe_alert(user_id: str, supplier: dict, old_score: int | None, final_args: dict):
+def _maybe_alert(user_id: str, supplier: dict, old_score: int | None, final_args: dict, analysis_id: str | None = None):
     new_score = final_args.get("score_total")
     if new_score is None or old_score is None:
         return
@@ -194,9 +198,10 @@ def _maybe_alert(user_id: str, supplier: dict, old_score: int | None, final_args
     if _level(old_score) == _level(new_score):
         return
     try:
-        from supabase import create_client
+        from datetime import datetime, timezone
+        from backend.db.client import get_db
         from backend.services.email import send_risk_alert
-        client   = create_client(settings.supabase_url, settings.supabase_key)
+        client   = get_db()
         response = client.auth.admin.get_user_by_id(user_id)
         email    = response.user.email
         findings = final_args.get("findings", [])
@@ -205,8 +210,24 @@ def _maybe_alert(user_id: str, supplier: dict, old_score: int | None, final_args
             try: findings = _json.loads(findings)
             except Exception: findings = []
         send_risk_alert(email, supplier["name"], old_score, new_score, findings)
+        level = _level(new_score)
+        severity = "critical" if level == 2 else "high" if level == 1 else "medium"
+        score_delta = new_score - old_score
+        client.table("alerts").insert({
+            "supplier_id":  supplier["id"],
+            "user_id":      user_id,
+            "analysis_id":  analysis_id,
+            "type":         "score_increase",
+            "severity":     severity,
+            "message":      f"Score de riesgo cambió de {old_score} a {new_score} (delta: {score_delta:+d})",
+            "score_before": old_score,
+            "score_after":  new_score,
+            "recipients":   [email],
+            "sent_at":      datetime.now(timezone.utc).isoformat(),
+            "send_status":  "sent",
+        }).execute()
     except Exception:
-        pass  # no bloquear el flujo si el email falla
+        pass  # no bloquear el flujo si el email o el INSERT falla
 
 
 def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manual", _analysis: dict | None = None):
@@ -305,8 +326,8 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
         old_score = supplier.get("current_score")
         model_tag = "demo" if use_demo else MODEL
         if final_args:
-            _persist(analysis_id, final_args, model_tag, _emit)
-            _maybe_alert(user_id, supplier, old_score, final_args)
+            _persist(analysis_id, final_args, model_tag, _emit, old_score)
+            _maybe_alert(user_id, supplier, old_score, final_args, analysis_id)
         else:
             update_analysis(analysis_id, {
                 "status": "failed",
