@@ -1,5 +1,6 @@
-﻿"""
-Supplier Agent â€” Phase 2.
+# coding: utf-8
+"""
+Supplier Agent — Phase 2.
 Gemini 2.0 Flash con function calling. 4 herramientas: scrape, news, legal, save.
 Fallback a modo demo si Gemini no tiene cuota disponible.
 """
@@ -14,18 +15,19 @@ from backend.api.stream import emit, ensure_queue
 
 MODEL = "gemini-2.0-flash"
 
-SYSTEM_PROMPT = """You are a supplier risk analyst for a manufacturing company.
-Your job: analyze a supplier and produce a structured risk assessment.
+SYSTEM_PROMPT = """Eres un analista de riesgo de proveedores para una empresa manufacturera.
+Tu trabajo: analizar un proveedor y producir una evaluación de riesgo estructurada.
+IMPORTANTE: Escribe TODO el contenido en español — resumen, hallazgos, descripciones.
 
-Scoring convention: 0 = perfectly safe, 100 = extremely risky.
+Convención de puntaje: 0 = completamente seguro, 100 = extremadamente riesgoso.
 
-Steps you MUST follow (in order):
-1. Scrape the supplier's website if a URL is provided.
-2. Search for recent news (financial problems, labor disputes, sanctions, ownership changes).
-3. Search for legal/regulatory issues (lawsuits, compliance violations, certifications, audits).
-4. Call save_analysis with your complete assessment.
+Pasos que DEBES seguir (en orden):
+1. Extrae información del sitio web del proveedor si se proporciona una URL.
+2. Busca noticias recientes (problemas financieros, disputas laborales, sanciones, cambios de propiedad).
+3. Busca problemas legales/regulatorios (demandas, violaciones de cumplimiento, certificaciones, auditorías).
+4. Llama a save_analysis con tu evaluación completa.
 
-Be concise. One call per tool. Call save_analysis as the LAST action."""
+Sé conciso. Una llamada por herramienta. Llama a save_analysis como la ÚLTIMA acción."""
 
 
 def _scrape(url: str) -> str:
@@ -112,9 +114,9 @@ def _build_tools() -> list[types.Tool]:
                     "score_reputational": types.Schema(type=types.Type.INTEGER,
                         description="Reputational/ESG risk 0-100."),
                     "summary": types.Schema(type=types.Type.STRING,
-                        description="Executive summary in 2-3 sentences."),
+                        description="Resumen ejecutivo en español, 2-3 oraciones."),
                     "findings": types.Schema(type=types.Type.STRING,
-                        description='JSON array: [{"type":"financial|operational|legal|reputational","severity":"low|medium|high","description":"..."}]'),
+                        description='JSON array en español: [{"type":"financial|operational|legal|reputational","severity":"low|medium|high","description":"..."}]'),
                     "sources_used": types.Schema(type=types.Type.STRING,
                         description='JSON array of URLs or search queries used: ["url1", "query2"]'),
                 },
@@ -126,12 +128,12 @@ def _build_tools() -> list[types.Tool]:
 
 
 def _run_demo(supplier: dict, analysis_id: str, emit_fn) -> dict:
-    """AnÃ¡lisis simulado â€” fallback cuando Gemini no tiene cuota."""
+    """Análisis simulado — fallback cuando Gemini no tiene cuota."""
     import random
     steps = [
-        ("scrape_website", f"Scraped {supplier.get('website', 'N/A')} â€” found company profile, certifications, product catalog"),
-        ("search_news",    f"No major financial distress signals for {supplier['name']} in recent 12 months"),
-        ("search_legal",   f"No active lawsuits or regulatory violations found for {supplier['name']}"),
+        ("scrape_website", f"Sitio web analizado: {supplier.get('website', 'N/A')} — perfil de empresa, certificaciones y catálogo de productos"),
+        ("search_news",    f"Sin señales de estrés financiero para {supplier['name']} en los últimos 12 meses"),
+        ("search_legal",   f"Sin demandas activas ni violaciones regulatorias encontradas para {supplier['name']}"),
     ]
     for i, (tool, output) in enumerate(steps, 1):
         time.sleep(1)
@@ -146,13 +148,13 @@ def _run_demo(supplier: dict, analysis_id: str, emit_fn) -> dict:
         "score_reputational": random.randint(5, 35),
         "summary": (
             f"{supplier['name']} es un proveedor de {supplier.get('industry', 'manufactura')} en "
-            f"{supplier.get('country', 'la regiÃ³n')}. El anÃ¡lisis automatizado no detectÃ³ seÃ±ales "
+            f"{supplier.get('country', 'la región')}. El análisis automatizado no detectó señales "
             f"de riesgo financiero o legal significativas. Se recomienda monitoreo trimestral."
         ),
         "findings": [
             {"type": "operational",  "severity": "low",    "description": "Sin incidencias operativas recientes reportadas"},
-            {"type": "reputational", "severity": "low",    "description": "Presencia web activa, sin controversias pÃºblicas"},
-            {"type": "financial",    "severity": "medium", "description": "InformaciÃ³n financiera pÃºblica limitada â€” requiere auditorÃ­a directa"},
+            {"type": "reputational", "severity": "low",    "description": "Presencia web activa, sin controversias públicas"},
+            {"type": "financial",    "severity": "medium", "description": "Información financiera pública limitada — requiere auditoría directa"},
         ],
         "sources_used": [
             supplier.get("website", ""),
@@ -187,7 +189,7 @@ def _persist(analysis_id: str, final_args: dict, model: str, emit_fn, old_score:
         "findings":            findings,
         "sources_used":        sources,
     })
-    emit_fn("done", f"AnÃ¡lisis completado â€” score {new_score}/100")
+    emit_fn("done", f"Análisis completado — score {new_score}/100")
 
 
 def _maybe_alert(user_id: str, supplier: dict, old_score: int | None, final_args: dict, analysis_id: str | None = None):
@@ -219,7 +221,7 @@ def _maybe_alert(user_id: str, supplier: dict, old_score: int | None, final_args
             "analysis_id":  analysis_id,
             "type":         "score_increase",
             "severity":     severity,
-            "message":      f"Score de riesgo cambiÃ³ de {old_score} a {new_score} (delta: {score_delta:+d})",
+            "message":      f"Score de riesgo cambió de {old_score} a {new_score} (delta: {score_delta:+d})",
             "score_before": old_score,
             "score_after":  new_score,
             "recipients":   [email],
@@ -227,7 +229,7 @@ def _maybe_alert(user_id: str, supplier: dict, old_score: int | None, final_args
             "send_status":  "sent",
         }).execute()
     except Exception:
-        pass  # no bloquear el flujo si el email o el INSERT falla
+        pass
 
 
 def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manual", _analysis: dict | None = None):
@@ -245,19 +247,19 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
             update_analysis(analysis_id, {"status": "failed", "error_message": "Proveedor no encontrado"})
             return
 
-        _emit("progress", f"Iniciando anÃ¡lisis de {supplier['name']}...")
+        _emit("progress", f"Iniciando análisis de {supplier['name']}...")
 
-        # â”€â”€ Gemini agent loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # Gemini agent loop
         client   = genai.Client(api_key=settings.gemini_api_key)
         tools    = _build_tools()
         contents: list[types.Content] = [
             types.Content(role="user", parts=[
-                types.Part(text=f"{SYSTEM_PROMPT}\n\nAnalyze this supplier:\n"
-                           f"Supplier: {supplier['name']}\n"
-                           f"Website: {supplier.get('website') or 'N/A'}\n"
-                           f"Country: {supplier.get('country') or 'N/A'}\n"
-                           f"Industry: {supplier.get('industry') or 'N/A'}\n"
-                           f"Notes: {supplier.get('notes') or 'N/A'}")
+                types.Part(text=f"{SYSTEM_PROMPT}\n\nAnaliza este proveedor:\n"
+                           f"Nombre: {supplier['name']}\n"
+                           f"Sitio web: {supplier.get('website') or 'N/A'}\n"
+                           f"País: {supplier.get('country') or 'N/A'}\n"
+                           f"Industria: {supplier.get('industry') or 'N/A'}\n"
+                           f"Notas: {supplier.get('notes') or 'N/A'}")
             ])
         ]
 
@@ -266,7 +268,6 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
         step_num               = 0
 
         for iteration in range(12):
-            # Try Gemini; on 429 fall back to demo
             try:
                 response = client.models.generate_content(
                     model=MODEL,
@@ -275,7 +276,7 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
                 )
             except Exception as e:
                 if "429" in str(e):
-                    _emit("progress", "Cuota Gemini agotada â€” usando modo demo...")
+                    _emit("progress", "Cuota Gemini agotada — usando modo demo...")
                     final_args = _run_demo(supplier, analysis_id, _emit)
                     use_demo   = True
                     break
@@ -301,7 +302,7 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
 
                 if tool_name == "save_analysis":
                     final_args  = tool_args
-                    result_text = "AnÃ¡lisis guardado."
+                    result_text = "Análisis guardado."
                 else:
                     result_text = (
                         _scrape(tool_args["url"])       if tool_name == "scrape_website" else
@@ -322,7 +323,7 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
             if final_args is not None:
                 break
 
-        # â”€â”€ Persist â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # Persist
         old_score = supplier.get("current_score")
         model_tag = "demo" if use_demo else MODEL
         if final_args:
@@ -331,9 +332,9 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
         else:
             update_analysis(analysis_id, {
                 "status": "failed",
-                "error_message": "El agente no produjo un anÃ¡lisis final.",
+                "error_message": "El agente no produjo un análisis final.",
             })
-            _emit("failed", "El agente no completÃ³ el anÃ¡lisis.")
+            _emit("failed", "El agente no completó el análisis.")
 
     except Exception as exc:
         err = f"{type(exc).__name__}: {exc}"
