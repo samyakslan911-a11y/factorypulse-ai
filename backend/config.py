@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     llm_provider: str = "gemini"
     gemini_api_key: str = ""
     anthropic_api_key: str = ""
+    groq_api_key: str = ""
 
     # Firecrawl
     firecrawl_api_key: str = ""

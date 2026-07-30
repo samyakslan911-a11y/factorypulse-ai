@@ -148,45 +148,93 @@ def _scrape(url: str) -> str:
             return (result.markdown or "")[:3000]
         except Exception as e:
             return f"Firecrawl error: {e}"
+    # Try multiple URL variants with real browser headers
+    import httpx, re
+    urls_to_try = [url]
     try:
-        import httpx, re
-        r = httpx.get(url, timeout=10, follow_redirects=True,
-                      headers={"User-Agent": "Mozilla/5.0 (compatible; FactoryPulse/1.0)"})
-        text = re.sub(r"<[^>]+>", " ", r.text)
-        text = re.sub(r"\s+", " ", text).strip()
-        return text[:3000]
-    except Exception as e:
-        return f"Scrape error: {e}"
+        from urllib.parse import urlparse
+        p = urlparse(url)
+        root = f"{p.scheme}://{p.netloc}"
+        if root != url.rstrip("/"):
+            urls_to_try.append(root)
+    except Exception:
+        pass
+
+    headers_variants = [
+        {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+         "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+         "Accept-Encoding": "gzip, deflate, br"},
+        {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+         "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"},
+    ]
+
+    for try_url in urls_to_try:
+        for headers in headers_variants:
+            try:
+                r = httpx.get(try_url, timeout=12, follow_redirects=True, headers=headers)
+                if r.status_code == 200 and len(r.text) > 200:
+                    text = re.sub(r"<script[^>]*>.*?</script>", " ", r.text, flags=re.DOTALL)
+                    text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.DOTALL)
+                    text = re.sub(r"<[^>]+>", " ", text)
+                    text = re.sub(r"\s+", " ", text).strip()
+                    if len(text) > 100:
+                        return text[:3000]
+            except Exception:
+                continue
+    return f"No se pudo acceder al sitio web: {url}"
 
 
-def _duckduckgo(query: str) -> str:
-    """Search using DuckDuckGo HTML interface — returns real results for any company."""
+def _search_web(query: str) -> str:
+    """Multi-source web search: tries DuckDuckGo lite then Bing."""
+    import httpx, re
+
+    # Attempt 1: DuckDuckGo Lite (más simple, menos bloqueo que el HTML completo)
     try:
-        import httpx, re
-        r = httpx.post(
-            "https://html.duckduckgo.com/html/",
-            data={"q": query, "kl": "wt-wt"},
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
+        r = httpx.get(
+            "https://lite.duckduckgo.com/lite/",
+            params={"q": query, "kl": "wt-wt"},
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            timeout=10,
+            follow_redirects=True,
+        )
+        if r.status_code == 200 and len(r.text) > 500:
+            snippets = re.findall(r'<td[^>]*class="result-snippet"[^>]*>(.*?)</td>', r.text, re.DOTALL)
+            if not snippets:
+                snippets = re.findall(r'<a[^>]+href="http[^"]*"[^>]*>(.*?)</a>', r.text, re.DOTALL)
+            if snippets:
+                clean = [re.sub(r"<[^>]+>", "", s).strip() for s in snippets[:6] if len(s.strip()) > 20]
+                result = "\n".join(clean)
+                if len(result) > 100:
+                    return result[:1500]
+    except Exception:
+        pass
+
+    # Attempt 2: Bing (más permisivo con IPs de servidores)
+    try:
+        r = httpx.get(
+            "https://www.bing.com/search",
+            params={"q": query, "setlang": "es"},
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Accept-Language": "es-ES,es;q=0.9",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            },
             timeout=12,
             follow_redirects=True,
         )
-        # Extract result snippets from DDG HTML
-        snippets = re.findall(r'class="result__snippet[^"]*"[^>]*>(.*?)</a>', r.text, re.DOTALL)
-        titles   = re.findall(r'class="result__a[^"]*"[^>]*>(.*?)</a>', r.text, re.DOTALL)
-        parts = []
-        for title, snippet in zip(titles[:5], snippets[:5]):
-            clean_t = re.sub(r"<[^>]+>", "", title).strip()
-            clean_s = re.sub(r"<[^>]+>", "", snippet).strip()
-            if clean_t or clean_s:
-                parts.append(f"{clean_t}: {clean_s}" if clean_t else clean_s)
-        if parts:
-            return "\n".join(parts)
-        # Fallback: strip all HTML and return raw text excerpt
-        plain = re.sub(r"<[^>]+>", " ", r.text)
-        plain = re.sub(r"\s+", " ", plain).strip()
-        return plain[500:2000] if len(plain) > 500 else ("No results found." if not plain else plain[:1000])
-    except Exception as e:
-        return f"Search error: {e}"
+        if r.status_code == 200:
+            captions = re.findall(r'<p class="b_paractl">(.*?)</p>', r.text, re.DOTALL)
+            if not captions:
+                captions = re.findall(r'<p[^>]*>(.*?)</p>', r.text, re.DOTALL)
+            clean = [re.sub(r"<[^>]+>", "", c).strip() for c in captions[:8] if len(c.strip()) > 30]
+            result = "\n".join(clean)
+            if len(result) > 100:
+                return result[:1500]
+    except Exception:
+        pass
+
+    return f"Sin resultados de búsqueda para: {query}"
 
 
 def _build_tools() -> list[types.Tool]:
@@ -276,7 +324,7 @@ def _run_demo(supplier: dict, analysis_id: str, emit_fn) -> dict:
     # Step 2: News
     emit_fn("progress", "[2] search_news...")
     t0 = time.monotonic()
-    news_raw = _duckduckgo(f"{name} {country} noticias finanzas problemas")
+    news_raw = _search_web(f"{name} {country} noticias finanzas problemas")
     news_ms  = int((time.monotonic() - t0) * 1000)
     news_ok  = bool(news_raw) and news_raw != "No results found." and len(news_raw) > 40
     news_summary = (
@@ -290,7 +338,7 @@ def _run_demo(supplier: dict, analysis_id: str, emit_fn) -> dict:
     # Step 3: Legal
     emit_fn("progress", "[3] search_legal...")
     t0 = time.monotonic()
-    legal_raw = _duckduckgo(f"{name} lawsuit demanda compliance violation")
+    legal_raw = _search_web(f"{name} lawsuit demanda compliance violation")
     legal_ms  = int((time.monotonic() - t0) * 1000)
     legal_ok  = bool(legal_raw) and legal_raw != "No results found." and len(legal_raw) > 40
     legal_summary = (
@@ -394,6 +442,81 @@ def _run_demo(supplier: dict, analysis_id: str, emit_fn) -> dict:
             f"{name} lawsuit compliance",
         ],
     }
+
+
+def _run_groq(supplier: dict, analysis_id: str, emit_fn) -> dict | None:
+    """Intenta análisis con Groq API (llama-3.3-70b) si GROQ_API_KEY está configurado."""
+    try:
+        import httpx, json as _json
+        groq_key = getattr(settings, "groq_api_key", None) or __import__("os").environ.get("GROQ_API_KEY", "")
+        if not groq_key:
+            return None
+
+        name     = supplier["name"]
+        website  = supplier.get("website") or "N/A"
+        industry = supplier.get("industry") or "N/A"
+        country  = supplier.get("country") or "N/A"
+
+        emit_fn("progress", "Usando Groq (llama-3.3-70b) para análisis...")
+
+        web_content  = _scrape(website) if website != "N/A" else "Sin sitio web registrado."
+        news_content = _search_web(f"{name} {country} noticias finanzas quiebra")
+        legal_content = _search_web(f"{name} demanda lawsuit compliance violation")
+
+        user_msg = f"""{SYSTEM_PROMPT}
+
+Analiza este proveedor basándote en la información recolectada:
+
+Nombre: {name}
+Sitio web: {website}
+País: {country}
+Industria: {industry}
+
+Contenido del sitio web:
+{web_content[:1500]}
+
+Resultados de noticias:
+{news_content[:800]}
+
+Resultados legales:
+{legal_content[:800]}
+
+Responde ÚNICAMENTE con un JSON válido con esta estructura exacta (sin markdown, sin texto extra):
+{{
+  "score_total": <número 0-100>,
+  "score_financial": <número 0-100>,
+  "score_operational": <número 0-100>,
+  "score_reputational": <número 0-100>,
+  "summary": "<3-4 oraciones en español con hallazgos concretos>",
+  "findings": [
+    {{"type": "financial|operational|legal|reputational", "severity": "low|medium|high", "description": "<descripción específica con evidencia, mínimo 40 palabras>"}}
+  ],
+  "sources_used": ["{website}", "búsqueda de noticias: {name}", "búsqueda legal: {name}"]
+}}"""
+
+        resp = httpx.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+            json={"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": user_msg}],
+                  "temperature": 0.3, "max_tokens": 1500},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        content = resp.json()["choices"][0]["message"]["content"].strip()
+
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+        result = _json.loads(content)
+
+        save_step(analysis_id, 1, "scrape_website", {"url": website}, web_content[:400], 0)
+        save_step(analysis_id, 2, "search_news", {"query": f"{name} noticias"}, news_content[:400], 0)
+        save_step(analysis_id, 3, "search_legal", {"query": f"{name} legal"}, legal_content[:400], 0)
+
+        return result
+    except Exception:
+        return None
 
 
 def _persist(analysis_id: str, final_args: dict, model: str, emit_fn, old_score: int | None = None):
@@ -551,8 +674,8 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
                     else:
                         result_text = (
                             _scrape(tool_args["url"])       if tool_name == "scrape_website" else
-                            _duckduckgo(tool_args["query"]) if tool_name == "search_news"    else
-                            _duckduckgo(tool_args["query"] + " lawsuit violation compliance")
+                            _search_web(tool_args["query"]) if tool_name == "search_news"    else
+                            _search_web(tool_args["query"] + " lawsuit violation compliance")
                         )
 
                     save_step(analysis_id, step_num, tool_name, tool_args,
@@ -573,9 +696,15 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
             break  # success or non-quota error
 
         if final_args is None and not use_demo:
-            _emit("progress", "Todos los modelos Gemini sin cuota — usando modo demo con scraping real...")
-            final_args = _run_demo(supplier, analysis_id, _emit)
-            use_demo   = True
+            # Try Groq before full demo
+            groq_result = _run_groq(supplier, analysis_id, _emit)
+            if groq_result:
+                final_args = groq_result
+                model_used = "groq-llama-3.3"
+            else:
+                _emit("progress", "Usando modo demo con scraping real...")
+                final_args = _run_demo(supplier, analysis_id, _emit)
+                use_demo   = True
 
         # Persist
         old_score = supplier.get("current_score")
