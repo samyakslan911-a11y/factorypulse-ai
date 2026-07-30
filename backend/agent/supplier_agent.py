@@ -178,6 +178,7 @@ def _scrape(url: str) -> str:
                     text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.DOTALL)
                     text = re.sub(r"<[^>]+>", " ", text)
                     text = re.sub(r"\s+", " ", text).strip()
+                    text = text.replace("\x00", "")  # strip null bytes — Supabase rejects them
                     if len(text) > 100:
                         return text[:3000]
             except Exception:
@@ -503,23 +504,49 @@ Responde ÚNICAMENTE con un JSON válido con esta estructura exacta (sin markdow
         )
         resp.raise_for_status()
         content = resp.json()["choices"][0]["message"]["content"].strip()
+        content = content.replace("\x00", "")  # strip null bytes
 
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
+        # Strip markdown fences robustly
+        import re as _re
+        json_match = _re.search(r"\{[\s\S]*\}", content)
+        if json_match:
+            content = json_match.group(0)
         result = _json.loads(content)
 
-        save_step(analysis_id, 1, "scrape_website", {"url": website}, web_content[:400], 0)
-        save_step(analysis_id, 2, "search_news", {"query": f"{name} noticias"}, news_content[:400], 0)
-        save_step(analysis_id, 3, "search_legal", {"query": f"{name} legal"}, legal_content[:400], 0)
+        # Strip null bytes from all string values before saving
+        def _clean(v):
+            if isinstance(v, str):
+                return v.replace("\x00", "")
+            if isinstance(v, list):
+                return [_clean(i) for i in v]
+            if isinstance(v, dict):
+                return {k: _clean(val) for k, val in v.items()}
+            return v
+        result = _clean(result)
+
+        save_step(analysis_id, 1, "scrape_website", {"url": website}, web_content[:400].replace("\x00", ""), 0)
+        save_step(analysis_id, 2, "search_news", {"query": f"{name} noticias"}, news_content[:400].replace("\x00", ""), 0)
+        save_step(analysis_id, 3, "search_legal", {"query": f"{name} legal"}, legal_content[:400].replace("\x00", ""), 0)
 
         return result
-    except Exception:
+    except Exception as e:
+        print(f"[groq] error: {e}")
         return None
 
 
+def _strip_null(v):
+    """Recursively remove null bytes (\\x00) from strings — Supabase/Postgres rejects them."""
+    if isinstance(v, str):
+        return v.replace("\x00", "")
+    if isinstance(v, list):
+        return [_strip_null(i) for i in v]
+    if isinstance(v, dict):
+        return {k: _strip_null(val) for k, val in v.items()}
+    return v
+
+
 def _persist(analysis_id: str, final_args: dict, model: str, emit_fn, old_score: int | None = None):
+    final_args = _strip_null(final_args)
     findings = final_args.get("findings", [])
     sources  = final_args.get("sources_used", [])
     if isinstance(findings, str):
