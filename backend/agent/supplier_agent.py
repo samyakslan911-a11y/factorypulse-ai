@@ -13,7 +13,11 @@ from backend.config import settings
 from backend.db.analyses import create_analysis, update_analysis, save_step
 from backend.api.stream import emit, ensure_queue
 
-MODEL = "gemini-2.0-flash"
+MODEL_CASCADE = [
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+]
 
 SYSTEM_PROMPT = """Eres un analista senior de riesgo de proveedores con 15 años de experiencia en due diligence para empresas manufactureras Fortune 500. Tu firma analítica: cada conclusión que emites está respaldada por evidencia específica y verificable. Los gerentes de compras confían en tus reportes para tomar decisiones de millones de dólares.
 
@@ -477,86 +481,100 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
 
         _emit("progress", f"Iniciando análisis de {supplier['name']}...")
 
-        # Gemini agent loop
-        client   = genai.Client(api_key=settings.gemini_api_key)
-        tools    = _build_tools()
-        contents: list[types.Content] = [
-            types.Content(role="user", parts=[
-                types.Part(text=(
-                    f"{SYSTEM_PROMPT}\n\n"
-                    f"Analiza este proveedor:\n"
-                    f"Nombre: {supplier['name']}\n"
-                    f"Sitio web: {supplier.get('website') or 'N/A'}\n"
-                    f"País: {supplier.get('country') or 'N/A'}\n"
-                    f"Industria: {supplier.get('industry') or 'N/A'}\n"
-                    f"Notas: {supplier.get('notes') or 'N/A'}"
-                ))
-            ])
-        ]
+        client = genai.Client(api_key=settings.gemini_api_key)
+        tools  = _build_tools()
+        user_prompt = (
+            f"{SYSTEM_PROMPT}\n\n"
+            f"Analiza este proveedor:\n"
+            f"Nombre: {supplier['name']}\n"
+            f"Sitio web: {supplier.get('website') or 'N/A'}\n"
+            f"País: {supplier.get('country') or 'N/A'}\n"
+            f"Industria: {supplier.get('industry') or 'N/A'}\n"
+            f"Notas: {supplier.get('notes') or 'N/A'}"
+        )
 
         final_args: dict | None = None
         use_demo               = False
         step_num               = 0
+        model_used             = MODEL_CASCADE[0]
 
-        for iteration in range(12):
-            try:
-                response = client.models.generate_content(
-                    model=MODEL,
-                    contents=contents,
-                    config=types.GenerateContentConfig(tools=tools),
-                )
-            except Exception as e:
-                if "429" in str(e):
-                    _emit("progress", "Cuota Gemini agotada — usando modo demo con scraping real...")
-                    final_args = _run_demo(supplier, analysis_id, _emit)
-                    use_demo   = True
+        # Try each model in cascade before falling back to demo
+        for model_attempt in MODEL_CASCADE:
+            contents: list[types.Content] = [
+                types.Content(role="user", parts=[types.Part(text=user_prompt)])
+            ]
+            model_used   = model_attempt
+            quota_hit    = False
+
+            _emit("progress", f"Usando modelo {model_attempt}...")
+
+            for iteration in range(12):
+                try:
+                    response = client.models.generate_content(
+                        model=model_attempt,
+                        contents=contents,
+                        config=types.GenerateContentConfig(tools=tools),
+                    )
+                except Exception as e:
+                    if "429" in str(e) or "quota" in str(e).lower():
+                        _emit("progress", f"Cuota agotada en {model_attempt} — probando siguiente modelo...")
+                        quota_hit = True
+                        break
+                    raise
+
+                candidate     = response.candidates[0]
+                model_content = candidate.content
+                contents.append(model_content)
+
+                fn_calls = [p for p in model_content.parts if p.function_call]
+                if not fn_calls:
                     break
-                raise
 
-            candidate     = response.candidates[0]
-            model_content = candidate.content
-            contents.append(model_content)
+                fn_responses: list[types.Part] = []
+                for part in fn_calls:
+                    fc        = part.function_call
+                    tool_name = fc.name
+                    tool_args = dict(fc.args)
 
-            fn_calls = [p for p in model_content.parts if p.function_call]
-            if not fn_calls:
-                break
+                    step_num += 1
+                    t0 = time.monotonic()
+                    _emit("progress", f"[{step_num}] {tool_name}...")
 
-            fn_responses: list[types.Part] = []
-            for part in fn_calls:
-                fc        = part.function_call
-                tool_name = fc.name
-                tool_args = dict(fc.args)
+                    if tool_name == "save_analysis":
+                        final_args  = tool_args
+                        result_text = "Análisis guardado."
+                    else:
+                        result_text = (
+                            _scrape(tool_args["url"])       if tool_name == "scrape_website" else
+                            _duckduckgo(tool_args["query"]) if tool_name == "search_news"    else
+                            _duckduckgo(tool_args["query"] + " lawsuit violation compliance")
+                        )
 
-                step_num += 1
-                t0 = time.monotonic()
-                _emit("progress", f"[{step_num}] {tool_name}...")
+                    save_step(analysis_id, step_num, tool_name, tool_args,
+                              result_text[:500], int((time.monotonic() - t0) * 1000))
 
-                if tool_name == "save_analysis":
-                    final_args  = tool_args
-                    result_text = "Análisis guardado."
-                else:
-                    result_text = (
-                        _scrape(tool_args["url"])       if tool_name == "scrape_website" else
-                        _duckduckgo(tool_args["query"]) if tool_name == "search_news"    else
-                        _duckduckgo(tool_args["query"] + " lawsuit violation compliance")
-                    )
+                    fn_responses.append(types.Part(
+                        function_response=types.FunctionResponse(
+                            name=tool_name, response={"result": result_text}
+                        )
+                    ))
 
-                save_step(analysis_id, step_num, tool_name, tool_args,
-                          result_text[:500], int((time.monotonic() - t0) * 1000))
+                contents.append(types.Content(role="user", parts=fn_responses))
+                if final_args is not None:
+                    break
 
-                fn_responses.append(types.Part(
-                    function_response=types.FunctionResponse(
-                        name=tool_name, response={"result": result_text}
-                    )
-                ))
+            if quota_hit:
+                continue  # try next model
+            break  # success or non-quota error
 
-            contents.append(types.Content(role="user", parts=fn_responses))
-            if final_args is not None:
-                break
+        if final_args is None and not use_demo:
+            _emit("progress", "Todos los modelos Gemini sin cuota — usando modo demo con scraping real...")
+            final_args = _run_demo(supplier, analysis_id, _emit)
+            use_demo   = True
 
         # Persist
         old_score = supplier.get("current_score")
-        model_tag = "demo" if use_demo else MODEL
+        model_tag = "demo" if use_demo else model_used
         if final_args:
             _persist(analysis_id, final_args, model_tag, _emit, old_score)
             _maybe_alert(user_id, supplier, old_score, final_args, analysis_id)
