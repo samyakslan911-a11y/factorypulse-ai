@@ -114,16 +114,22 @@ sources_used: lista de URLs y queries de búsqueda utilizados."""
 
 
 def _clean_url(url: str) -> str:
-    """Strip tracking params (UTM, gclid, fbclid, etc.) and return clean base URL."""
+    """Strip all ad/tracking params and return clean base URL."""
     try:
         from urllib.parse import urlparse, urlencode, parse_qs
-        TRACKING = {"utm_source","utm_medium","utm_campaign","utm_content","utm_term",
-                    "gclid","gad_source","gbraid","wbraid","fbclid","msclkid",
-                    "matchtype","keyword","network","device","adposition","creative"}
+        TRACKING = {
+            "utm_source","utm_medium","utm_campaign","utm_content","utm_term","utm_id",
+            "gclid","gad_source","gad_campaignid","gbraid","wbraid","gclsrc",
+            "matchtype","keyword","network","device","adposition","creative",
+            "campaignid","adgroupid","adid",
+            "fbclid","fb_action_ids","fb_ref","fb_source",
+            "msclkid","ttclid","twclid","li_fat_id",
+            "mc_cid","mc_eid","igshid","_ga","_gl",
+        }
         p = urlparse(url)
         clean_qs = {k: v for k, v in parse_qs(p.query).items() if k.lower() not in TRACKING}
         clean = p._replace(query=urlencode(clean_qs, doseq=True))
-        return clean.geturl()
+        return clean.geturl().rstrip("?&")
     except Exception:
         return url
 
@@ -150,21 +156,31 @@ def _scrape(url: str) -> str:
 
 
 def _duckduckgo(query: str) -> str:
+    """Search using DuckDuckGo HTML interface — returns real results for any company."""
     try:
-        import httpx
-        r = httpx.get(
-            "https://api.duckduckgo.com/",
-            params={"q": query, "format": "json", "no_html": 1, "skip_disambig": 1},
-            timeout=10,
+        import httpx, re
+        r = httpx.post(
+            "https://html.duckduckgo.com/html/",
+            data={"q": query, "kl": "wt-wt"},
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
+            timeout=12,
+            follow_redirects=True,
         )
-        data = r.json()
+        # Extract result snippets from DDG HTML
+        snippets = re.findall(r'class="result__snippet[^"]*"[^>]*>(.*?)</a>', r.text, re.DOTALL)
+        titles   = re.findall(r'class="result__a[^"]*"[^>]*>(.*?)</a>', r.text, re.DOTALL)
         parts = []
-        if data.get("Abstract"):
-            parts.append(data["Abstract"])
-        for topic in data.get("RelatedTopics", [])[:6]:
-            if isinstance(topic, dict) and topic.get("Text"):
-                parts.append(topic["Text"])
-        return "\n".join(parts) if parts else "No results found."
+        for title, snippet in zip(titles[:5], snippets[:5]):
+            clean_t = re.sub(r"<[^>]+>", "", title).strip()
+            clean_s = re.sub(r"<[^>]+>", "", snippet).strip()
+            if clean_t or clean_s:
+                parts.append(f"{clean_t}: {clean_s}" if clean_t else clean_s)
+        if parts:
+            return "\n".join(parts)
+        # Fallback: strip all HTML and return raw text excerpt
+        plain = re.sub(r"<[^>]+>", " ", r.text)
+        plain = re.sub(r"\s+", " ", plain).strip()
+        return plain[500:2000] if len(plain) > 500 else ("No results found." if not plain else plain[:1000])
     except Exception as e:
         return f"Search error: {e}"
 
