@@ -173,10 +173,14 @@ def _scrape(url: str) -> str:
         for headers in headers_variants:
             try:
                 r = httpx.get(try_url, timeout=12, follow_redirects=True, headers=headers)
-                if r.status_code == 200 and len(r.text) > 200:
-                    text = re.sub(r"<script[^>]*>.*?</script>", " ", r.text, flags=re.DOTALL)
+                if r.status_code == 200 and len(r.content) > 200:
+                    # Decode using charset from Content-Type header; replace bad chars
+                    encoding = r.encoding or "utf-8"
+                    raw_text = r.content.decode(encoding, errors="replace")
+                    text = re.sub(r"<script[^>]*>.*?</script>", " ", raw_text, flags=re.DOTALL)
                     text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.DOTALL)
                     text = re.sub(r"<[^>]+>", " ", text)
+                    text = re.sub(r"[^\x20-\x7E\xA0-￿]", " ", text)  # drop control chars
                     text = re.sub(r"\s+", " ", text).strip()
                     text = text.replace("\x00", "")  # strip null bytes — Supabase rejects them
                     if len(text) > 100:
