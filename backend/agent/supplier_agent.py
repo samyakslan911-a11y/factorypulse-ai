@@ -15,8 +15,8 @@ from backend.api.stream import emit, ensure_queue
 
 MODEL_CASCADE = [
     "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-8b",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash-lite",
 ]
 
 SYSTEM_PROMPT = """Eres un analista senior de riesgo de proveedores con 15 años de experiencia en due diligence para empresas manufactureras Fortune 500. Tu firma analítica: cada conclusión que emites está respaldada por evidencia específica y verificable. Los gerentes de compras confían en tus reportes para tomar decisiones de millones de dólares.
