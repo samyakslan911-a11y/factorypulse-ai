@@ -15,8 +15,8 @@ from backend.api.stream import emit, ensure_queue
 
 MODEL_CASCADE = [
     "gemini-2.0-flash",
-    "gemini-2.5-flash",
     "gemini-2.0-flash-lite",
+    "gemini-2.0-flash-001",
 ]
 
 SYSTEM_PROMPT = """Eres un analista senior de riesgo de proveedores con 15 años de experiencia en due diligence para empresas manufactureras Fortune 500. Tu firma analítica: cada conclusión que emites está respaldada por evidencia específica y verificable. Los gerentes de compras confían en tus reportes para tomar decisiones de millones de dólares.
@@ -516,8 +516,13 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
                         config=types.GenerateContentConfig(tools=tools),
                     )
                 except Exception as e:
-                    if "429" in str(e) or "quota" in str(e).lower():
+                    err_str = str(e)
+                    if "429" in err_str or "quota" in err_str.lower():
                         _emit("progress", f"Cuota agotada en {model_attempt} — probando siguiente modelo...")
+                        quota_hit = True
+                        break
+                    if "404" in err_str or "not found" in err_str.lower() or "no longer available" in err_str.lower():
+                        _emit("progress", f"Modelo {model_attempt} no disponible — probando siguiente...")
                         quota_hit = True
                         break
                     raise
