@@ -113,7 +113,23 @@ findings: JSON array de 3–6 objetos, cada uno con:
 sources_used: lista de URLs y queries de búsqueda utilizados."""
 
 
+def _clean_url(url: str) -> str:
+    """Strip tracking params (UTM, gclid, fbclid, etc.) and return clean base URL."""
+    try:
+        from urllib.parse import urlparse, urlencode, parse_qs
+        TRACKING = {"utm_source","utm_medium","utm_campaign","utm_content","utm_term",
+                    "gclid","gad_source","gbraid","wbraid","fbclid","msclkid",
+                    "matchtype","keyword","network","device","adposition","creative"}
+        p = urlparse(url)
+        clean_qs = {k: v for k, v in parse_qs(p.query).items() if k.lower() not in TRACKING}
+        clean = p._replace(query=urlencode(clean_qs, doseq=True))
+        return clean.geturl()
+    except Exception:
+        return url
+
+
 def _scrape(url: str) -> str:
+    url = _clean_url(url)
     if settings.firecrawl_api_key:
         try:
             from firecrawl import FirecrawlApp
@@ -225,15 +241,16 @@ def _run_demo(supplier: dict, analysis_id: str, emit_fn) -> dict:
     # Step 1: Scrape
     emit_fn("progress", "[1] scrape_website...")
     t0 = time.monotonic()
-    web_raw = _scrape(website) if website else ""
+    clean_website = _clean_url(website) if website else ""
+    web_raw = _scrape(clean_website) if clean_website else ""
     web_ms  = int((time.monotonic() - t0) * 1000)
     if web_raw and "error" not in web_raw.lower():
-        web_summary = f"Sitio web analizado: {website} — {web_raw[:300].replace(chr(10), ' ').strip()}"
+        web_summary = f"Sitio web analizado: {clean_website} — {web_raw[:300].replace(chr(10), ' ').strip()}"
         web_ok = True
     else:
-        web_summary = f"No se pudo acceder al sitio web: {website or '(sin URL)'}"
+        web_summary = f"No se pudo acceder al sitio web: {clean_website or '(sin URL)'}"
         web_ok = False
-    save_step(analysis_id, 1, "scrape_website", {"url": website}, web_summary, web_ms)
+    save_step(analysis_id, 1, "scrape_website", {"url": clean_website}, web_summary, web_ms)
     time.sleep(0.5)
 
     # Step 2: News
@@ -279,7 +296,7 @@ def _run_demo(supplier: dict, analysis_id: str, emit_fn) -> dict:
             "type": "operational",
             "severity": "medium",
             "description": (
-                f"No se pudo acceder al sitio web del proveedor {'(' + website + ')' if website else '(sin URL registrada)'}. "
+                f"No se pudo acceder al sitio web del proveedor {'(' + clean_website + ')' if clean_website else '(sin URL registrada)'}. "
                 "La presencia digital no pudo ser verificada en el momento del análisis."
             ),
         })
@@ -352,7 +369,7 @@ def _run_demo(supplier: dict, analysis_id: str, emit_fn) -> dict:
         ),
         "findings": findings,
         "sources_used": [
-            website or "(sin URL)",
+            clean_website or "(sin URL)",
             f"{name} noticias finanzas",
             f"{name} lawsuit compliance",
         ],
