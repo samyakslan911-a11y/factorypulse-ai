@@ -1,5 +1,5 @@
-"""
-Supplier Agent — Phase 2.
+﻿"""
+Supplier Agent â€” Phase 2.
 Gemini 2.0 Flash con function calling. 4 herramientas: scrape, news, legal, save.
 Fallback a modo demo si Gemini no tiene cuota disponible.
 """
@@ -12,7 +12,7 @@ from backend.config import settings
 from backend.db.analyses import create_analysis, update_analysis, save_step
 from backend.api.stream import emit, ensure_queue
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-2.0-flash"
 
 SYSTEM_PROMPT = """You are a supplier risk analyst for a manufacturing company.
 Your job: analyze a supplier and produce a structured risk assessment.
@@ -126,10 +126,10 @@ def _build_tools() -> list[types.Tool]:
 
 
 def _run_demo(supplier: dict, analysis_id: str, emit_fn) -> dict:
-    """Análisis simulado — fallback cuando Gemini no tiene cuota."""
+    """AnÃ¡lisis simulado â€” fallback cuando Gemini no tiene cuota."""
     import random
     steps = [
-        ("scrape_website", f"Scraped {supplier.get('website', 'N/A')} — found company profile, certifications, product catalog"),
+        ("scrape_website", f"Scraped {supplier.get('website', 'N/A')} â€” found company profile, certifications, product catalog"),
         ("search_news",    f"No major financial distress signals for {supplier['name']} in recent 12 months"),
         ("search_legal",   f"No active lawsuits or regulatory violations found for {supplier['name']}"),
     ]
@@ -146,13 +146,13 @@ def _run_demo(supplier: dict, analysis_id: str, emit_fn) -> dict:
         "score_reputational": random.randint(5, 35),
         "summary": (
             f"{supplier['name']} es un proveedor de {supplier.get('industry', 'manufactura')} en "
-            f"{supplier.get('country', 'la región')}. El análisis automatizado no detectó señales "
+            f"{supplier.get('country', 'la regiÃ³n')}. El anÃ¡lisis automatizado no detectÃ³ seÃ±ales "
             f"de riesgo financiero o legal significativas. Se recomienda monitoreo trimestral."
         ),
         "findings": [
             {"type": "operational",  "severity": "low",    "description": "Sin incidencias operativas recientes reportadas"},
-            {"type": "reputational", "severity": "low",    "description": "Presencia web activa, sin controversias públicas"},
-            {"type": "financial",    "severity": "medium", "description": "Información financiera pública limitada — requiere auditoría directa"},
+            {"type": "reputational", "severity": "low",    "description": "Presencia web activa, sin controversias pÃºblicas"},
+            {"type": "financial",    "severity": "medium", "description": "InformaciÃ³n financiera pÃºblica limitada â€” requiere auditorÃ­a directa"},
         ],
         "sources_used": [
             supplier.get("website", ""),
@@ -187,7 +187,7 @@ def _persist(analysis_id: str, final_args: dict, model: str, emit_fn, old_score:
         "findings":            findings,
         "sources_used":        sources,
     })
-    emit_fn("done", f"Análisis completado — score {new_score}/100")
+    emit_fn("done", f"AnÃ¡lisis completado â€” score {new_score}/100")
 
 
 def _maybe_alert(user_id: str, supplier: dict, old_score: int | None, final_args: dict, analysis_id: str | None = None):
@@ -219,7 +219,7 @@ def _maybe_alert(user_id: str, supplier: dict, old_score: int | None, final_args
             "analysis_id":  analysis_id,
             "type":         "score_increase",
             "severity":     severity,
-            "message":      f"Score de riesgo cambió de {old_score} a {new_score} (delta: {score_delta:+d})",
+            "message":      f"Score de riesgo cambiÃ³ de {old_score} a {new_score} (delta: {score_delta:+d})",
             "score_before": old_score,
             "score_after":  new_score,
             "recipients":   [email],
@@ -245,9 +245,9 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
             update_analysis(analysis_id, {"status": "failed", "error_message": "Proveedor no encontrado"})
             return
 
-        _emit("progress", f"Iniciando análisis de {supplier['name']}...")
+        _emit("progress", f"Iniciando anÃ¡lisis de {supplier['name']}...")
 
-        # ── Gemini agent loop ──────────────────────────────────────────
+        # â”€â”€ Gemini agent loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         client   = genai.Client(api_key=settings.gemini_api_key)
         tools    = _build_tools()
         contents: list[types.Content] = [
@@ -275,7 +275,7 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
                 )
             except Exception as e:
                 if "429" in str(e):
-                    _emit("progress", "Cuota Gemini agotada — usando modo demo...")
+                    _emit("progress", "Cuota Gemini agotada â€” usando modo demo...")
                     final_args = _run_demo(supplier, analysis_id, _emit)
                     use_demo   = True
                     break
@@ -301,7 +301,7 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
 
                 if tool_name == "save_analysis":
                     final_args  = tool_args
-                    result_text = "Análisis guardado."
+                    result_text = "AnÃ¡lisis guardado."
                 else:
                     result_text = (
                         _scrape(tool_args["url"])       if tool_name == "scrape_website" else
@@ -322,7 +322,7 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
             if final_args is not None:
                 break
 
-        # ── Persist ───────────────────────────────────────────────────
+        # â”€â”€ Persist â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         old_score = supplier.get("current_score")
         model_tag = "demo" if use_demo else MODEL
         if final_args:
@@ -331,9 +331,9 @@ def run_supplier_agent(supplier_id: str, user_id: str, triggered_by: str = "manu
         else:
             update_analysis(analysis_id, {
                 "status": "failed",
-                "error_message": "El agente no produjo un análisis final.",
+                "error_message": "El agente no produjo un anÃ¡lisis final.",
             })
-            _emit("failed", "El agente no completó el análisis.")
+            _emit("failed", "El agente no completÃ³ el anÃ¡lisis.")
 
     except Exception as exc:
         err = f"{type(exc).__name__}: {exc}"
