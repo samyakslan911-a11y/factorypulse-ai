@@ -163,26 +163,23 @@ def _scrape(url: str) -> str:
     headers_variants = [
         {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-         "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-         "Accept-Encoding": "gzip, deflate, br"},
+         "Accept-Language": "es-ES,es;q=0.9,en;q=0.8"},
         {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-         "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"},
+         "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+         "Accept-Language": "es,en;q=0.8"},
     ]
 
     for try_url in urls_to_try:
         for headers in headers_variants:
             try:
                 r = httpx.get(try_url, timeout=12, follow_redirects=True, headers=headers)
-                if r.status_code == 200 and len(r.content) > 200:
-                    # Decode using charset from Content-Type header; replace bad chars
-                    encoding = r.encoding or "utf-8"
-                    raw_text = r.content.decode(encoding, errors="replace")
-                    text = re.sub(r"<script[^>]*>.*?</script>", " ", raw_text, flags=re.DOTALL)
+                if r.status_code == 200 and len(r.text) > 200:
+                    text = re.sub(r"<script[^>]*>.*?</script>", " ", r.text, flags=re.DOTALL)
                     text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.DOTALL)
                     text = re.sub(r"<[^>]+>", " ", text)
                     text = re.sub(r"[^\x20-\x7E\xA0-￿]", " ", text)  # drop control chars
                     text = re.sub(r"\s+", " ", text).strip()
-                    text = text.replace("\x00", "")  # strip null bytes — Supabase rejects them
+                    text = text.replace("\x00", "")
                     if len(text) > 100:
                         return text[:3000]
             except Exception:
